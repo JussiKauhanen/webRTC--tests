@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f8f7">
+  <title>water.io — WebRTC nearby lab</title>
+  <meta name="description" content="A static, browser-to-browser WebRTC messaging and image transfer experiment.">
+  <link rel="icon" href="../assets/og-image.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <a class="brand" href="../" aria-label="Back to water.io">water<span>.io</span></a>
+      <span class="lab-label">WebRTC lab</span>
+    </header>
+
+    <section class="intro">
+      <p class="eyebrow">Static peer-to-peer test</p>
+      <h1>Send something directly.</h1>
+      <p>Open this page on two devices, exchange the connection codes, then send a message or image. Nothing is stored on a server.</p>
+    </section>
+
+    <section class="card connection-card" aria-labelledby="connection-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">Step 1</p>
+          <h2 id="connection-heading">Connect two devices</h2>
+        </div>
+        <div class="status-pill" id="statusPill" data-state="idle">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="statusText">Not connected</span>
+        </div>
+      </div>
+
+      <ol class="instructions">
+        <li>On device A, tap <strong>Create offer</strong> to show a QR code.</li>
+        <li>On device B, tap <strong>Scan QR</strong>. It will show an answer QR.</li>
+        <li>Scan that answer with device A. The connection opens automatically.</li>
+      </ol>
+
+      <div class="actions">
+        <button class="button primary" id="createOffer" type="button">Create offer</button>
+        <button class="button secondary" id="scanQr" type="button">Scan QR</button>
+        <button class="button quiet" id="resetConnection" type="button">Reset</button>
+      </div>
+
+      <div class="qr-panel" id="qrPanel" hidden>
+        <canvas id="qrCanvas" aria-label="Connection QR code"></canvas>
+        <div>
+          <strong id="qrTitle">Your connection code</strong>
+          <p id="qrCaption">Let the other device scan this code.</p>
+        </div>
+      </div>
+
+      <details class="fallback">
+        <summary>Use text codes instead</summary>
+        <label class="field-label" for="localCode">Code from this device</label>
+        <div class="code-field">
+          <textarea id="localCode" rows="3" readonly placeholder="Create or accept an offer to generate a code"></textarea>
+          <button class="button compact" id="copyCode" type="button" disabled>Copy</button>
+        </div>
+
+        <label class="field-label" for="remoteCode">Code from the other device</label>
+        <textarea id="remoteCode" rows="3" placeholder="Paste the other device's code here" autocomplete="off" spellcheck="false"></textarea>
+        <button class="button secondary full" id="useCode" type="button">Use code</button>
+      </details>
+
+      <p class="connection-detail" id="connectionDetail">Uses public STUN for address discovery and no TURN relay.</p>
+    </section>
+
+    <section class="card exchange-card" aria-labelledby="exchange-heading">
+      <div class="section-heading">
+        <div>
+          <p class="step">Step 2</p>
+          <h2 id="exchange-heading">Exchange</h2>
+        </div>
+        <span class="path-label" id="pathLabel">Waiting for peer</span>
+      </div>
+
+      <div class="messages" id="messages" aria-live="polite">
+        <p class="empty-state" id="emptyState">Messages and images will appear here.</p>
+      </div>
+
+      <form class="composer" id="messageForm">
+        <input id="messageInput" type="text" maxlength="500" placeholder="Write a message…" autocomplete="off" disabled>
+        <button class="send-button" id="sendMessage" type="submit" disabled aria-label="Send message">Send</button>
+      </form>
+
+      <div class="file-row">
+        <label class="button secondary file-button" for="imageInput" aria-disabled="true" id="imageLabel">
+          Send an image
+        </label>
+        <input id="imageInput" type="file" accept="image/*" disabled>
+        <span id="transferStatus">Up to 5 MB</span>
+      </div>
+    </section>
+
+    <aside class="note">
+      <strong>What this proves:</strong> browser-to-browser data transfer from static hosting.
+      Separate 4G/5G networks may block the direct route; a failure there means a TURN relay would be needed for reliability.
+    </aside>
+  </main>
+
+  <div class="scanner-modal" id="scannerModal" hidden role="dialog" aria-modal="true" aria-labelledby="scannerTitle">
+    <div class="scanner-sheet">
+      <div class="scanner-heading">
+        <div>
+          <p class="step">Camera</p>
+          <h2 id="scannerTitle">Scan connection QR</h2>
+        </div>
+        <button class="scanner-close" id="closeScanner" type="button" aria-label="Close scanner">×</button>
+      </div>
+      <div class="camera-frame">
+        <video id="scannerVideo" muted playsinline></video>
+        <div class="scan-guide" aria-hidden="true"></div>
+      </div>
+      <canvas id="scannerCanvas" hidden></canvas>
+      <p class="camera-status" id="cameraStatus" aria-live="polite">Point the camera at the QR code on the other device.</p>
+    </div>
+  </div>
+
+  <script src="vendor/qrcode-generator-1.4.4.js"></script>
+  <script src="vendor/jsQR-1.4.0.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
