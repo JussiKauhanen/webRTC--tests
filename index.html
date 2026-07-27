@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#f4f8f7">
   <title>water.io — Chat directly</title>
-  <meta name="description" content="A private browser-to-browser chat for messages and images.">
+  <meta name="description" content="A private browser-to-browser chat for messages and photos.">
   <link rel="icon" href="../assets/og-image.png">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -37,55 +37,35 @@
         </button>
         <p class="privacy-note">
           <span aria-hidden="true">●</span>
-          Private by design. Nothing is stored here.
+          Private by design. Nothing is stored on a server.
         </p>
-      </div>
-
-      <div class="role-view" id="roleView" hidden>
-        <button class="back-button" id="backToStart" type="button" aria-label="Go back">←</button>
-        <div class="role-copy">
-          <p class="eyebrow">Connect your phones</p>
-          <h1>Who has the code?</h1>
-          <p>Choose the one that matches what you see in front of you.</p>
+        <div class="history-notice" id="historyNotice" hidden>
+          <span>Your previous chat is saved on this phone.</span>
+          <button id="clearHistory" type="button">Clear it</button>
         </div>
-
-        <div class="role-options">
-          <button class="role-option" id="createOffer" type="button">
-            <span class="role-icon show-icon" aria-hidden="true">▦</span>
-            <span>
-              <strong>Show my code</strong>
-              <small>Your friend scans this phone</small>
-            </span>
-            <span class="role-arrow" aria-hidden="true">→</span>
-          </button>
-          <button class="role-option" id="scanQr" type="button">
-            <span class="role-icon scan-icon" aria-hidden="true">⌗</span>
-            <span>
-              <strong>Scan their code</strong>
-              <small>Point your camera at their phone</small>
-            </span>
-            <span class="role-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-
-        <p class="connection-detail" id="connectionDetail">
-          Both phones should keep this page open while connecting.
-        </p>
       </div>
     </section>
 
     <section class="chat-view" id="chatView" aria-labelledby="chatHeading" hidden>
       <header class="chat-heading">
-        <div>
-          <h1 id="chatHeading">Your chat</h1>
-          <span class="path-label" id="pathLabel">Direct connection</span>
+        <div class="friend-avatar" aria-hidden="true">W</div>
+        <div class="friend-details">
+          <h1 id="chatHeading">Direct chat</h1>
+          <span class="chat-status" id="chatStatus" data-state="connected">
+            <span class="chat-status-dot" aria-hidden="true"></span>
+            <span id="chatStatusText">Connected</span>
+          </span>
         </div>
-        <button class="end-button" id="resetConnection" type="button">End</button>
+        <button class="end-button" id="resetConnection" type="button">Disconnect</button>
       </header>
 
       <div class="reconnect-notice" id="reconnectNotice" hidden>
-        <span id="reconnectText">The connection needs a fresh scan.</span>
-        <button id="reconnectScan" type="button">Scan code</button>
+        <strong id="reconnectText">Reconnect with your friend</strong>
+        <span>Your messages stay here. Exchange fresh codes to continue.</span>
+        <div class="reconnect-actions">
+          <button class="button primary" id="reconnectShow" type="button">Show my code</button>
+          <button class="button secondary" id="reconnectScan" type="button">Scan a code</button>
+        </div>
       </div>
 
       <div class="messages" id="messages" aria-live="polite">
@@ -97,13 +77,26 @@
 
       <div class="composer-area">
         <p class="transfer-status" id="transferStatus" aria-live="polite"></p>
+        <div class="emoji-picker" id="emojiPicker" hidden aria-label="Choose an emoji">
+          <button type="button">😀</button>
+          <button type="button">😂</button>
+          <button type="button">❤️</button>
+          <button type="button">👍</button>
+          <button type="button">🎉</button>
+          <button type="button">😍</button>
+          <button type="button">🙏</button>
+          <button type="button">👋</button>
+          <button type="button">😅</button>
+          <button type="button">🔥</button>
+        </div>
         <form class="composer" id="messageForm">
+          <button class="emoji-button" id="emojiToggle" type="button" disabled aria-label="Choose an emoji">☺</button>
           <label class="photo-button" for="imageInput" aria-disabled="true" id="imageLabel">
             <span aria-hidden="true">＋</span>
             <span class="visually-hidden">Send a photo</span>
           </label>
           <input id="imageInput" type="file" accept="image/*" disabled>
-          <input id="messageInput" type="text" maxlength="500" placeholder="Message…" autocomplete="off" disabled>
+          <input id="messageInput" type="text" maxlength="500" placeholder="Message" autocomplete="off" disabled>
           <button class="send-button" id="sendMessage" type="submit" disabled aria-label="Send message">↑</button>
         </form>
       </div>
@@ -117,12 +110,17 @@
         <canvas id="qrCanvas" aria-label="Connection QR code"></canvas>
         <div class="qr-copy">
           <h2 id="qrTitle">Let your friend scan this</h2>
-          <p id="qrCaption">Keep this screen open on your phone.</p>
+          <p id="qrCaption">Keep this screen open while they scan.</p>
         </div>
-        <button class="button primary scan-return" id="scanReturnCode" type="button" hidden>
-          Scan their return code
+        <button class="button camera-button" id="scanReturnCode" type="button">
+          <span aria-hidden="true">⌗</span>
+          Scan a code instead
         </button>
       </div>
+
+      <p class="connection-detail" id="connectionDetail" aria-live="polite">
+        Creating a private connection…
+      </p>
 
       <details class="fallback">
         <summary>Can’t scan? Use a text code</summary>

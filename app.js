@@ -2,6 +2,9 @@
   'use strict';
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
+  const MAX_SOURCE_FILE_SIZE = 25 * 1024 * 1024;
+  const IMAGE_MAX_DIMENSION = 900;
+  const IMAGE_QUALITY = 0.82;
   const CHUNK_SIZE = 16 * 1024;
   const BUFFER_LIMIT = 512 * 1024;
   const HEARTBEAT_INTERVAL = 5000;
@@ -9,6 +12,9 @@
   const RECOVERY_GRACE = 12000;
   const CODE_PREFIX = 'water-webrtc-v2.';
   const LEGACY_CODE_PREFIX = 'water-webrtc-v1.';
+  const HISTORY_DB = 'water-io-local-chat';
+  const HISTORY_STORE = 'messages';
+  const CONNECTION_ROLE_KEY = 'water-io-connection-role';
   const ICE_SERVERS = [
     { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
   ];
@@ -16,18 +22,16 @@
   const $ = selector => document.querySelector(selector);
   const setupView = $('#setupView');
   const startView = $('#startView');
-  const roleView = $('#roleView');
   const chatView = $('#chatView');
   const connectStartButton = $('#connectStart');
-  const backToStartButton = $('#backToStart');
   const statusPill = $('#statusPill');
   const statusText = $('#statusText');
+  const chatStatus = $('#chatStatus');
+  const chatStatusText = $('#chatStatusText');
   const connectionDetail = $('#connectionDetail');
   const localCode = $('#localCode');
   const remoteCode = $('#remoteCode');
   const copyCode = $('#copyCode');
-  const createOfferButton = $('#createOffer');
-  const scanQrButton = $('#scanQr');
   const useCodeButton = $('#useCode');
   const resetButton = $('#resetConnection');
   const qrPanel = $('#qrPanel');
@@ -42,9 +46,9 @@
   const scannerVideo = $('#scannerVideo');
   const scannerCanvas = $('#scannerCanvas');
   const cameraStatus = $('#cameraStatus');
-  const pathLabel = $('#pathLabel');
   const reconnectNotice = $('#reconnectNotice');
   const reconnectText = $('#reconnectText');
+  const reconnectShowButton = $('#reconnectShow');
   const reconnectScanButton = $('#reconnectScan');
   const messageForm = $('#messageForm');
   const messageInput = $('#messageInput');
@@ -54,6 +58,10 @@
   const transferStatus = $('#transferStatus');
   const messages = $('#messages');
   const emptyState = $('#emptyState');
+  const emojiToggle = $('#emojiToggle');
+  const emojiPicker = $('#emojiPicker');
+  const historyNotice = $('#historyNotice');
+  const clearHistoryButton = $('#clearHistory');
 
   let peer = null;
   let channel = null;
@@ -67,38 +75,36 @@
   let heartbeatTimer = 0;
   let recoveryTimer = 0;
   let lastPongAt = 0;
-  let connectionOwner = null;
+  let connectionOwner = readSavedConnectionOwner();
+  let sessionWasConnected = false;
   let recoveryOfferInProgress = false;
+  let pairingDismissed = false;
+  let historyDbPromise = null;
   const objectUrls = new Set();
 
   function setStatus(text, state = 'idle', detail) {
     statusText.textContent = text;
     statusPill.dataset.state = state;
     statusPill.hidden = false;
+    chatStatusText.textContent = text;
+    chatStatus.dataset.state = state;
     if (detail) connectionDetail.textContent = detail;
   }
 
   function showStart() {
     setupView.hidden = false;
     startView.hidden = false;
-    roleView.hidden = true;
     chatView.hidden = true;
     reconnectNotice.hidden = true;
+    emojiPicker.hidden = true;
     hidePairing();
     statusPill.hidden = true;
+    document.body.classList.remove('chat-active');
   }
 
-  function showRoleChoices() {
-    setupView.hidden = false;
-    startView.hidden = true;
-    roleView.hidden = false;
-    chatView.hidden = true;
-    reconnectNotice.hidden = true;
-    hidePairing();
-    statusPill.hidden = true;
-  }
-
-  function showPairing() {
+  function showPairing(force = false) {
+    if (pairingDismissed && !force) return;
+    if (force) pairingDismissed = false;
     pairingModal.hidden = false;
     document.body.classList.add('modal-open');
   }
@@ -113,14 +119,125 @@
     chatView.hidden = false;
     reconnectNotice.hidden = true;
     hidePairing();
-    statusPill.hidden = false;
+    document.body.classList.add('chat-active');
+    requestAnimationFrame(() => {
+      messages.scrollTop = messages.scrollHeight;
+    });
   }
 
   function setExchangeEnabled(enabled) {
     messageInput.disabled = !enabled;
     sendMessageButton.disabled = !enabled;
+    emojiToggle.disabled = !enabled;
     imageInput.disabled = !enabled || sendingFile;
     imageLabel.setAttribute('aria-disabled', String(!enabled || sendingFile));
+    if (!enabled) emojiPicker.hidden = true;
+  }
+
+  function showReconnectChoices(message = 'Reconnect with your friend') {
+    showChat();
+    reconnectText.textContent = message;
+    reconnectNotice.hidden = false;
+  }
+
+  function readSavedConnectionOwner() {
+    try {
+      const saved = localStorage.getItem(CONNECTION_ROLE_KEY);
+      if (saved === 'owner') return true;
+      if (saved === 'guest') return false;
+    } catch {
+      // Local storage is optional.
+    }
+    return null;
+  }
+
+  function saveConnectionOwner(value) {
+    connectionOwner = value;
+    try {
+      if (value === true) localStorage.setItem(CONNECTION_ROLE_KEY, 'owner');
+      else if (value === false) localStorage.setItem(CONNECTION_ROLE_KEY, 'guest');
+      else localStorage.removeItem(CONNECTION_ROLE_KEY);
+    } catch {
+      // The live connection still works if storage is unavailable.
+    }
+  }
+
+  function messageId() {
+    return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function openHistoryDb() {
+    if (!('indexedDB' in window)) return Promise.reject(new Error('Local history is unavailable.'));
+    if (historyDbPromise) return historyDbPromise;
+
+    historyDbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(HISTORY_DB, 1);
+      request.addEventListener('upgradeneeded', () => {
+        if (!request.result.objectStoreNames.contains(HISTORY_STORE)) {
+          request.result.createObjectStore(HISTORY_STORE, { keyPath: 'id' });
+        }
+      });
+      request.addEventListener('success', () => resolve(request.result));
+      request.addEventListener('error', () => reject(request.error));
+    });
+    return historyDbPromise;
+  }
+
+  async function saveHistoryRecord(record) {
+    try {
+      const db = await openHistoryDb();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(HISTORY_STORE, 'readwrite');
+        transaction.objectStore(HISTORY_STORE).put(record);
+        transaction.addEventListener('complete', resolve);
+        transaction.addEventListener('error', () => reject(transaction.error));
+      });
+      historyNotice.hidden = false;
+    } catch {
+      // Private browsing can disable IndexedDB; chat still works for this tab.
+    }
+  }
+
+  async function restoreHistory() {
+    try {
+      const db = await openHistoryDb();
+      const records = await new Promise((resolve, reject) => {
+        const transaction = db.transaction(HISTORY_STORE, 'readonly');
+        const request = transaction.objectStore(HISTORY_STORE).getAll();
+        request.addEventListener('success', () => resolve(request.result || []));
+        request.addEventListener('error', () => reject(request.error));
+      });
+      records.sort((a, b) => a.timestamp - b.timestamp);
+      for (const record of records) {
+        if (record.type === 'text') {
+          appendMessage(record.text, record.mine, record.timestamp, false, record.id);
+        } else if (record.type === 'image' && record.blob instanceof Blob) {
+          appendImage(record.blob, record.name, record.mine, record.timestamp, false, record.id);
+        }
+      }
+      historyNotice.hidden = records.length === 0;
+    } catch {
+      historyNotice.hidden = true;
+    }
+  }
+
+  async function clearHistory() {
+    try {
+      const db = await openHistoryDb();
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(HISTORY_STORE, 'readwrite');
+        transaction.objectStore(HISTORY_STORE).clear();
+        transaction.addEventListener('complete', resolve);
+        transaction.addEventListener('error', () => reject(transaction.error));
+      });
+    } catch {
+      // Clear the visible history even when storage is unavailable.
+    }
+    objectUrls.forEach(url => URL.revokeObjectURL(url));
+    objectUrls.clear();
+    messages.replaceChildren(emptyState);
+    emptyState.hidden = false;
+    historyNotice.hidden = true;
   }
 
   function stopHeartbeat() {
@@ -152,6 +269,7 @@
   function markConnected() {
     clearRecoveryTimer();
     recoveryOfferInProgress = false;
+    sessionWasConnected = true;
     qrPanel.hidden = true;
     showChat();
     setStatus(
@@ -161,14 +279,12 @@
     );
     setExchangeEnabled(true);
     startHeartbeat();
-    inspectConnectionPath();
   }
 
   function scheduleRecovery(reason) {
     if (recoveryTimer || recoveryOfferInProgress) return;
     setExchangeEnabled(false);
-    setStatus('Reconnecting…', 'working', `${reason} Waiting briefly for WebRTC to recover the route.`);
-    pathLabel.textContent = 'Checking connection';
+    setStatus('Reconnecting…', 'working', `${reason} Trying the existing route first.`);
     recoveryTimer = setTimeout(beginStaticRecovery, RECOVERY_GRACE);
   }
 
@@ -180,19 +296,14 @@
     if (connectionOwner === true) {
       if (recoveryOfferInProgress) return;
       recoveryOfferInProgress = true;
-      reconnectNotice.hidden = false;
-      reconnectText.textContent = 'Show a fresh code to reconnect.';
-      reconnectScanButton.textContent = 'Show code';
+      showReconnectChoices('A fresh code is ready');
       setStatus('New scan needed', 'working', 'Show this fresh code to your friend.');
       await createOffer({ recovery: true });
       recoveryOfferInProgress = false;
       return;
     }
 
-    reconnectNotice.hidden = false;
-    reconnectText.textContent = 'Scan the fresh code on your friend’s phone.';
-    reconnectScanButton.textContent = 'Scan code';
-    pathLabel.textContent = 'Waiting for a fresh scan';
+    showReconnectChoices('The connection needs a fresh scan');
     setStatus(
       'Scan needed',
       'error',
@@ -454,30 +565,7 @@
     });
   }
 
-  async function inspectConnectionPath() {
-    if (!peer) return;
-    try {
-      const stats = await peer.getStats();
-      let pair = null;
-      stats.forEach(report => {
-        if (
-          report.type === 'candidate-pair' &&
-          report.state === 'succeeded' &&
-          (report.nominated || report.selected)
-        ) pair = report;
-      });
-      if (!pair) return;
-      const local = stats.get(pair.localCandidateId);
-      const remote = stats.get(pair.remoteCandidateId);
-      const types = [local?.candidateType, remote?.candidateType].filter(Boolean);
-      const relayed = types.includes('relay');
-      pathLabel.textContent = relayed ? 'Private connection' : 'Direct phone-to-phone';
-    } catch {
-      pathLabel.textContent = 'Private connection';
-    }
-  }
-
-  function resetPeer({ clearMessages = false, forgetSession = false } = {}) {
+  function resetPeer({ forgetSession = false, keepRecoveryNotice = false } = {}) {
     stopScanner();
     stopHeartbeat();
     clearRecoveryTimer();
@@ -487,7 +575,7 @@
     channel = null;
     role = null;
     if (forgetSession) {
-      connectionOwner = null;
+      saveConnectionOwner(null);
       recoveryOfferInProgress = false;
     }
     previousChannel?.close();
@@ -498,23 +586,20 @@
     remoteCode.value = '';
     copyCode.disabled = true;
     qrPanel.hidden = true;
-    reconnectNotice.hidden = true;
+    if (!keepRecoveryNotice) reconnectNotice.hidden = true;
     transferStatus.textContent = '';
-    pathLabel.textContent = 'Direct connection';
     setExchangeEnabled(false);
     setStatus('Not connected', 'idle', 'Both phones should keep this page open while connecting.');
-
-    if (clearMessages) {
-      messages.replaceChildren(emptyState);
-      emptyState.hidden = false;
-    }
   }
 
   async function createOffer({ recovery = false } = {}) {
-    resetPeer();
-    if (!recovery) connectionOwner = true;
-    createOfferButton.disabled = true;
+    resetPeer({ keepRecoveryNotice: recovery });
+    saveConnectionOwner(true);
+    if (!recovery) sessionWasConnected = false;
+    connectStartButton.disabled = true;
+    reconnectShowButton.disabled = true;
     useCodeButton.disabled = true;
+    showPairing(true);
     try {
       role = 'offerer';
       peer = createPeer();
@@ -540,12 +625,14 @@
     } catch (error) {
       if (recovery) {
         console.error(error);
+        showReconnectChoices('Could not make a fresh code');
         setStatus('Reconnect setup failed', 'error', error?.message || 'Could not create a fresh QR.');
       } else {
         showError(error);
       }
     } finally {
-      createOfferButton.disabled = false;
+      connectStartButton.disabled = false;
+      reconnectShowButton.disabled = false;
       useCodeButton.disabled = false;
     }
   }
@@ -556,9 +643,10 @@
       const description = await unpackDescription(typeof code === 'string' ? code : remoteCode.value);
 
       if (description.type === 'offer') {
-        const reconnecting = connectionOwner !== null;
-        if (connectionOwner === null) connectionOwner = false;
-        resetPeer();
+        const reconnecting = sessionWasConnected;
+        pairingDismissed = false;
+        saveConnectionOwner(false);
+        resetPeer({ keepRecoveryNotice: reconnecting });
         role = 'answerer';
         peer = createPeer();
         setStatus(
@@ -621,10 +709,11 @@
     channel.send(JSON.stringify(payload));
   }
 
-  function appendMessage(text, mine, timestamp = Date.now()) {
+  function appendMessage(text, mine, timestamp = Date.now(), persist = true, id = messageId()) {
     emptyState.hidden = true;
     const item = document.createElement('div');
     item.className = `message${mine ? ' mine' : ''}`;
+    item.dataset.messageId = id;
     const content = document.createElement('span');
     content.textContent = text;
     const meta = document.createElement('span');
@@ -636,14 +725,18 @@
     item.append(content, meta);
     messages.append(item);
     messages.scrollTop = messages.scrollHeight;
+    if (persist) {
+      void saveHistoryRecord({ id, type: 'text', text, mine, timestamp });
+    }
   }
 
-  function appendImage(blob, name, mine) {
+  function appendImage(blob, name, mine, timestamp = Date.now(), persist = true, id = messageId()) {
     emptyState.hidden = true;
     const url = URL.createObjectURL(blob);
     objectUrls.add(url);
     const item = document.createElement('div');
     item.className = `message image-message${mine ? ' mine' : ''}`;
+    item.dataset.messageId = id;
     const image = document.createElement('img');
     image.src = url;
     image.alt = name || 'Shared image';
@@ -654,6 +747,16 @@
     item.append(image, link);
     messages.append(item);
     messages.scrollTop = messages.scrollHeight;
+    if (persist) {
+      void saveHistoryRecord({ id, type: 'image', blob, name, mine, timestamp });
+    }
+  }
+
+  function handleRemoteEnd() {
+    sessionWasConnected = false;
+    resetPeer({ keepRecoveryNotice: true });
+    showReconnectChoices('Your friend disconnected');
+    setStatus('Disconnected', 'error', 'Your messages are safe. Reconnect whenever you are ready.');
   }
 
   function handleIncomingData(event) {
@@ -676,7 +779,9 @@
         return;
       }
 
-      if (payload.kind === 'message' && typeof payload.text === 'string') {
+      if (payload.kind === 'session-end') {
+        handleRemoteEnd();
+      } else if (payload.kind === 'message' && typeof payload.text === 'string') {
         appendMessage(payload.text.slice(0, 500), false, payload.sentAt);
       } else if (payload.kind === 'file-start') {
         if (
@@ -696,6 +801,7 @@
           name: String(payload.name || 'shared-image').slice(0, 160),
           mime: payload.mime,
           size: payload.size,
+          sentAt: payload.sentAt || Date.now(),
           received: 0,
           chunks: []
         };
@@ -707,7 +813,7 @@
           return;
         }
         const blob = new Blob(incomingFile.chunks, { type: incomingFile.mime });
-        appendImage(blob, incomingFile.name, false);
+        appendImage(blob, incomingFile.name, false, incomingFile.sentAt);
         transferStatus.textContent = `Received ${incomingFile.name}`;
         incomingFile = null;
       }
@@ -751,30 +857,107 @@
     });
   }
 
+  async function loadImageSource(file) {
+    if ('createImageBitmap' in window) {
+      try {
+        const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+        return {
+          width: bitmap.width,
+          height: bitmap.height,
+          draw(context, width, height) {
+            context.drawImage(bitmap, 0, 0, width, height);
+          },
+          close() {
+            bitmap.close();
+          }
+        };
+      } catch {
+        // Fall through to the regular image decoder.
+      }
+    }
+
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    await image.decode();
+    return {
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      draw(context, width, height) {
+        context.drawImage(image, 0, 0, width, height);
+      },
+      close() {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }
+
+  async function prepareImageForTransfer(file) {
+    if (!file.type.startsWith('image/')) throw new Error('Choose a photo or image.');
+    if (file.size > MAX_SOURCE_FILE_SIZE) throw new Error('Choose an image smaller than 25 MB.');
+
+    transferStatus.textContent = 'Preparing a smaller photo…';
+    const source = await loadImageSource(file);
+    try {
+      const largestSide = Math.max(source.width, source.height);
+      if (largestSide <= IMAGE_MAX_DIMENSION && file.size <= 500 * 1024) return file;
+
+      const scale = Math.min(1, IMAGE_MAX_DIMENSION / largestSide);
+      const width = Math.max(1, Math.round(source.width * scale));
+      const height = Math.max(1, Math.round(source.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d', { alpha: false });
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, width, height);
+      source.draw(context, width, height);
+
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', IMAGE_QUALITY));
+      if (!blob) throw new Error('This image could not be resized.');
+      const baseName = file.name.replace(/\.[^.]+$/, '') || 'photo';
+      return new File([blob], `${baseName}.jpg`, {
+        type: 'image/jpeg',
+        lastModified: Date.now()
+      });
+    } finally {
+      source.close();
+    }
+  }
+
   async function sendImage(file) {
-    if (!canSend()) throw new Error('Connect a peer before sending an image.');
-    if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
-    if (file.size > MAX_FILE_SIZE) throw new Error('For this POC, images must be 5 MB or smaller.');
+    if (!canSend()) throw new Error('Reconnect before sending a photo.');
 
     sendingFile = true;
     setExchangeEnabled(true);
-    const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    transferStatus.textContent = `Sending ${file.name}…`;
-    sendJson({ kind: 'file-start', id, name: file.name, mime: file.type, size: file.size });
 
     try {
+      const outgoing = await prepareImageForTransfer(file);
+      if (outgoing.size > MAX_FILE_SIZE) throw new Error('The resized image is still too large to send.');
+      const id = messageId();
+      const sentAt = Date.now();
+      transferStatus.textContent = `Sending ${outgoing.name}…`;
+      sendJson({
+        kind: 'file-start',
+        id,
+        name: outgoing.name,
+        mime: outgoing.type,
+        size: outgoing.size,
+        sentAt
+      });
       let sent = 0;
-      while (sent < file.size) {
+      while (sent < outgoing.size) {
         await waitForBufferSpace();
-        const chunk = await file.slice(sent, sent + CHUNK_SIZE).arrayBuffer();
+        const chunk = await outgoing.slice(sent, sent + CHUNK_SIZE).arrayBuffer();
         if (!canSend()) throw new Error('The peer disconnected during transfer.');
         channel.send(chunk);
         sent += chunk.byteLength;
-        transferStatus.textContent = `Sending ${file.name} · ${Math.round(sent / file.size * 100)}%`;
+        transferStatus.textContent = `Sending photo · ${Math.round(sent / outgoing.size * 100)}%`;
       }
       sendJson({ kind: 'file-end', id });
-      appendImage(file, file.name, true);
-      transferStatus.textContent = `Sent ${file.name}`;
+      appendImage(outgoing, outgoing.name, true, sentAt);
+      transferStatus.textContent = `Photo sent · ${Math.max(1, Math.round(outgoing.size / 1024))} KB`;
     } finally {
       sendingFile = false;
       setExchangeEnabled(canSend());
@@ -782,26 +965,47 @@
     }
   }
 
-  connectStartButton.addEventListener('click', showRoleChoices);
-  backToStartButton.addEventListener('click', () => {
-    resetPeer({ forgetSession: true });
-    showStart();
-  });
-  createOfferButton.addEventListener('click', () => createOffer());
-  scanQrButton.addEventListener('click', startScanner);
-  scanReturnButton.addEventListener('click', startScanner);
-  reconnectScanButton.addEventListener('click', () => {
-    if (connectionOwner === true && localCode.value) {
-      showPairing();
-    } else {
-      void startScanner();
+  async function endConversation() {
+    if (canSend()) {
+      try {
+        sendJson({ kind: 'session-end', sentAt: Date.now() });
+        await new Promise(resolve => setTimeout(resolve, 80));
+      } catch {
+        // The local disconnect still completes.
+      }
     }
-  });
+    sessionWasConnected = false;
+    resetPeer();
+    showStart();
+  }
+
+  function checkConnectionAfterResume() {
+    if (!sessionWasConnected) return;
+    if (canSend()) {
+      try {
+        lastPongAt = Date.now();
+        sendJson({ kind: 'heartbeat-ping', sentAt: Date.now() });
+        setStatus('Connected', 'connected', 'Checking that your friend is still reachable.');
+      } catch {
+        scheduleRecovery('The phone could not reach your friend.');
+      }
+      return;
+    }
+    scheduleRecovery('The phone was asleep or offline.');
+  }
+
+  connectStartButton.addEventListener('click', () => createOffer());
+  scanReturnButton.addEventListener('click', startScanner);
+  reconnectShowButton.addEventListener('click', () => createOffer({ recovery: true }));
+  reconnectScanButton.addEventListener('click', startScanner);
   closePairingButton.addEventListener('click', () => {
+    pairingDismissed = true;
     hidePairing();
     if (chatView.hidden) {
-      resetPeer({ forgetSession: true });
-      showRoleChoices();
+      resetPeer();
+      showStart();
+    } else if (!canSend()) {
+      showReconnectChoices('Reconnect when you are ready');
     }
   });
   pairingModal.addEventListener('click', event => {
@@ -813,9 +1017,19 @@
   });
   useCodeButton.addEventListener('click', () => useRemoteDescription());
   copyCode.addEventListener('click', copyLocalCode);
-  resetButton.addEventListener('click', () => {
-    resetPeer({ clearMessages: true, forgetSession: true });
-    showStart();
+  resetButton.addEventListener('click', endConversation);
+  clearHistoryButton.addEventListener('click', clearHistory);
+  emojiToggle.addEventListener('click', () => {
+    emojiPicker.hidden = !emojiPicker.hidden;
+  });
+  emojiPicker.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (!button || messageInput.disabled) return;
+    const emoji = button.textContent;
+    const start = messageInput.selectionStart ?? messageInput.value.length;
+    const end = messageInput.selectionEnd ?? start;
+    messageInput.setRangeText(emoji, start, end, 'end');
+    messageInput.focus({ preventScroll: true });
   });
 
   messageForm.addEventListener('submit', event => {
@@ -827,7 +1041,8 @@
       sendJson({ kind: 'message', text, sentAt });
       appendMessage(text, true, sentAt);
       messageInput.value = '';
-      messageInput.focus();
+      emojiPicker.hidden = true;
+      messageInput.focus({ preventScroll: true });
     } catch (error) {
       showError(error);
     }
@@ -847,13 +1062,39 @@
     if (imageInput.disabled) event.preventDefault();
   });
 
+  document.addEventListener('pointerdown', event => {
+    if (
+      !emojiPicker.hidden &&
+      !emojiPicker.contains(event.target) &&
+      event.target !== emojiToggle
+    ) {
+      emojiPicker.hidden = true;
+    }
+  });
+
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !scannerModal.hidden) stopScanner();
     else if (event.key === 'Escape' && !pairingModal.hidden) closePairingButton.click();
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && !scannerModal.hidden) stopScanner();
+    if (document.hidden) {
+      if (!scannerModal.hidden) stopScanner();
+    } else {
+      checkConnectionAfterResume();
+    }
+  });
+
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) checkConnectionAfterResume();
+  });
+
+  window.addEventListener('online', checkConnectionAfterResume);
+  window.visualViewport?.addEventListener('resize', () => {
+    if (chatView.hidden) return;
+    requestAnimationFrame(() => {
+      messages.scrollTop = messages.scrollHeight;
+    });
   });
 
   window.addEventListener('beforeunload', () => {
@@ -868,11 +1109,10 @@
   if (!('RTCPeerConnection' in window)) {
     setStatus('Not supported here', 'error', 'Try this page in a current version of Chrome, Safari, or Firefox.');
     connectStartButton.disabled = true;
-    createOfferButton.disabled = true;
-    scanQrButton.disabled = true;
     useCodeButton.disabled = true;
   } else {
-    resetPeer({ forgetSession: true });
+    resetPeer();
     showStart();
   }
+  void restoreHistory();
 })();
