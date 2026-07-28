@@ -30,6 +30,7 @@
   const statusText = $('#statusText');
   const chatStatus = $('#chatStatus');
   const chatStatusText = $('#chatStatusText');
+  const wakeStatus = $('#wakeStatus');
   const connectionDetail = $('#connectionDetail');
   const localCode = $('#localCode');
   const remoteCode = $('#remoteCode');
@@ -83,6 +84,8 @@
   let sessionWasConnected = false;
   let recoveryOfferInProgress = false;
   let pairingDismissed = false;
+  let wakeLock = null;
+  let wakeLockWanted = false;
   let historyDbPromise = null;
   const objectUrls = new Set();
 
@@ -176,6 +179,41 @@
       else localStorage.removeItem(CONNECTION_ROLE_KEY);
     } catch {
       // The live connection still works if storage is unavailable.
+    }
+  }
+
+  async function requestWakeLock() {
+    wakeLockWanted = true;
+    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    if (wakeLock && !wakeLock.released) return;
+
+    try {
+      const sentinel = await navigator.wakeLock.request('screen');
+      if (!wakeLockWanted) {
+        await sentinel.release();
+        return;
+      }
+      wakeLock = sentinel;
+      wakeStatus.hidden = false;
+      sentinel.addEventListener('release', () => {
+        if (wakeLock === sentinel) wakeLock = null;
+        wakeStatus.hidden = true;
+      });
+    } catch {
+      wakeLock = null;
+      wakeStatus.hidden = true;
+    }
+  }
+
+  async function releaseWakeLock() {
+    wakeLockWanted = false;
+    const currentLock = wakeLock;
+    wakeLock = null;
+    wakeStatus.hidden = true;
+    try {
+      await currentLock?.release();
+    } catch {
+      // The browser may already have released it.
     }
   }
 
@@ -296,6 +334,7 @@
     );
     setExchangeEnabled(true);
     startHeartbeat();
+    void requestWakeLock();
   }
 
   function scheduleRecovery(reason) {
@@ -995,6 +1034,7 @@
     }
     sessionWasConnected = false;
     resetPeer();
+    await releaseWakeLock();
     showStart();
   }
 
@@ -1016,18 +1056,32 @@
   connectStartButton.addEventListener('click', showRoleChoices);
   backToStartButton.addEventListener('click', () => {
     resetPeer();
+    void releaseWakeLock();
     showStart();
   });
-  createOfferButton.addEventListener('click', () => createOffer());
-  scanQrButton.addEventListener('click', startScanner);
+  createOfferButton.addEventListener('click', () => {
+    void requestWakeLock();
+    void createOffer();
+  });
+  scanQrButton.addEventListener('click', () => {
+    void requestWakeLock();
+    void startScanner();
+  });
   scanReturnButton.addEventListener('click', startScanner);
-  reconnectShowButton.addEventListener('click', () => createOffer({ recovery: true }));
-  reconnectScanButton.addEventListener('click', startScanner);
+  reconnectShowButton.addEventListener('click', () => {
+    void requestWakeLock();
+    void createOffer({ recovery: true });
+  });
+  reconnectScanButton.addEventListener('click', () => {
+    void requestWakeLock();
+    void startScanner();
+  });
   closePairingButton.addEventListener('click', () => {
     pairingDismissed = true;
     hidePairing();
     if (chatView.hidden) {
       resetPeer();
+      void releaseWakeLock();
       showRoleChoices();
     } else if (!canSend()) {
       showReconnectChoices('Reconnect when you are ready');
@@ -1106,12 +1160,16 @@
     if (document.hidden) {
       if (!scannerModal.hidden) stopScanner();
     } else {
+      if (wakeLockWanted) void requestWakeLock();
       checkConnectionAfterResume();
     }
   });
 
   window.addEventListener('pageshow', event => {
-    if (event.persisted) checkConnectionAfterResume();
+    if (event.persisted) {
+      if (wakeLockWanted) void requestWakeLock();
+      checkConnectionAfterResume();
+    }
   });
 
   window.addEventListener('online', checkConnectionAfterResume);
@@ -1126,6 +1184,7 @@
     stopScanner();
     stopHeartbeat();
     clearRecoveryTimer();
+    void releaseWakeLock();
     channel?.close();
     peer?.close();
     objectUrls.forEach(url => URL.revokeObjectURL(url));
