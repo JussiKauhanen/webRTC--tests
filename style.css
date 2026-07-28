@@ -12,6 +12,8 @@
   --bubble-mine: #d9f2e8;
   --red: #b84137;
   --shadow: 0 24px 70px rgba(23, 61, 58, 0.12);
+  --app-height: 100dvh;
+  --app-top: 0px;
 }
 
 * {
@@ -43,7 +45,7 @@ body {
 }
 
 body.chat-active {
-  height: 100dvh;
+  height: var(--app-height);
   overflow: hidden;
 }
 
@@ -79,7 +81,7 @@ summary:focus-visible {
 }
 
 .chat-active .app-shell {
-  height: 100dvh;
+  height: 100%;
   min-height: 0;
   padding: 0;
 }
@@ -976,7 +978,7 @@ body.modal-open {
 
   .app-shell,
   .chat-active .app-shell {
-    height: calc(100dvh - 56px);
+    height: calc(var(--app-height) - 56px);
     min-height: 0;
     padding: 24px 30px 26px;
     border: 1px solid rgba(23, 61, 58, 0.08);
@@ -1000,6 +1002,17 @@ body.modal-open {
 
   .onboarding {
     min-height: 0;
+  }
+}
+
+@media (max-width: 699px) {
+  body.chat-active {
+    position: fixed;
+    top: var(--app-top);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
   }
 }
 

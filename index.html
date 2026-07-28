@@ -20,33 +20,7 @@
     </header>
 
     <section class="onboarding" id="setupView">
-      <div class="start-view" id="startView">
-        <img
-          class="welcome-art"
-          src="assets/connect-friends.png"
-          alt="Two phones connecting by QR code"
-          width="960"
-          height="640"
-        >
-        <div class="welcome-copy">
-          <h1>Chat with a friend</h1>
-          <p>Messages and photos go straight between your phones.</p>
-        </div>
-        <button class="button primary start-button" id="connectStart" type="button">
-          Connect with a friend
-        </button>
-        <p class="privacy-note">
-          <span aria-hidden="true">●</span>
-          Private by design. Nothing is stored on a server.
-        </p>
-        <div class="history-notice" id="historyNotice" hidden>
-          <span>Your previous chat is saved on this phone.</span>
-          <button id="clearHistory" type="button">Clear it</button>
-        </div>
-      </div>
-
-      <div class="role-view" id="roleView" hidden>
-        <button class="back-button" id="backToStart" type="button" aria-label="Go back">←</button>
+      <div class="role-view" id="roleView">
         <div class="role-copy">
           <p class="eyebrow">Connect your phones</p>
           <h1>Host or join?</h1>
@@ -70,6 +44,14 @@
             </span>
             <span class="role-arrow" aria-hidden="true">→</span>
           </button>
+        </div>
+        <p class="privacy-note">
+          <span aria-hidden="true">●</span>
+          Private by design. Nothing is stored on a server.
+        </p>
+        <div class="history-notice" id="historyNotice" hidden>
+          <span>Your previous chat is saved on this phone.</span>
+          <button id="clearHistory" type="button">Clear it</button>
         </div>
       </div>
     </section>

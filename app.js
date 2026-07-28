@@ -21,11 +21,8 @@
 
   const $ = selector => document.querySelector(selector);
   const setupView = $('#setupView');
-  const startView = $('#startView');
   const roleView = $('#roleView');
   const chatView = $('#chatView');
-  const connectStartButton = $('#connectStart');
-  const backToStartButton = $('#backToStart');
   const statusPill = $('#statusPill');
   const statusText = $('#statusText');
   const chatStatus = $('#chatStatus');
@@ -98,21 +95,21 @@
     if (detail) connectionDetail.textContent = detail;
   }
 
-  function showStart() {
-    setupView.hidden = false;
-    startView.hidden = false;
-    roleView.hidden = true;
-    chatView.hidden = true;
-    reconnectNotice.hidden = true;
-    emojiPicker.hidden = true;
-    hidePairing();
-    statusPill.hidden = true;
-    document.body.classList.remove('chat-active');
+  function updateViewportMetrics() {
+    const viewport = window.visualViewport;
+    const height = Math.round(viewport?.height || window.innerHeight);
+    const offsetTop = Math.round(viewport?.offsetTop || 0);
+    document.documentElement.style.setProperty('--app-height', `${height}px`);
+    document.documentElement.style.setProperty('--app-top', `${offsetTop}px`);
+    if (!chatView.hidden) {
+      requestAnimationFrame(() => {
+        messages.scrollTop = messages.scrollHeight;
+      });
+    }
   }
 
   function showRoleChoices() {
     setupView.hidden = false;
-    startView.hidden = true;
     roleView.hidden = false;
     chatView.hidden = true;
     reconnectNotice.hidden = true;
@@ -120,6 +117,7 @@
     hidePairing();
     statusPill.hidden = true;
     document.body.classList.remove('chat-active');
+    updateViewportMetrics();
   }
 
   function showPairing(force = false) {
@@ -140,9 +138,7 @@
     reconnectNotice.hidden = true;
     hidePairing();
     document.body.classList.add('chat-active');
-    requestAnimationFrame(() => {
-      messages.scrollTop = messages.scrollHeight;
-    });
+    updateViewportMetrics();
   }
 
   function setExchangeEnabled(enabled) {
@@ -681,7 +677,6 @@
     resetPeer({ keepRecoveryNotice: recovery });
     saveConnectionOwner(true);
     if (!recovery) sessionWasConnected = false;
-    connectStartButton.disabled = true;
     createOfferButton.disabled = true;
     reconnectShowButton.disabled = true;
     useCodeButton.disabled = true;
@@ -717,7 +712,6 @@
         showError(error);
       }
     } finally {
-      connectStartButton.disabled = false;
       createOfferButton.disabled = false;
       reconnectShowButton.disabled = false;
       useCodeButton.disabled = false;
@@ -1064,7 +1058,7 @@
     sessionWasConnected = false;
     resetPeer();
     await releaseWakeLock();
-    showStart();
+    showRoleChoices();
   }
 
   function checkConnectionAfterResume() {
@@ -1082,12 +1076,6 @@
     scheduleRecovery('The phone was asleep or offline.');
   }
 
-  connectStartButton.addEventListener('click', showRoleChoices);
-  backToStartButton.addEventListener('click', () => {
-    resetPeer();
-    void releaseWakeLock();
-    showStart();
-  });
   createOfferButton.addEventListener('click', () => {
     void requestWakeLock();
     void createOffer();
@@ -1173,6 +1161,16 @@
     if (imageInput.disabled) event.preventDefault();
   });
 
+  messageInput.addEventListener('focus', () => {
+    updateViewportMetrics();
+    setTimeout(updateViewportMetrics, 80);
+    setTimeout(updateViewportMetrics, 320);
+  });
+
+  messageInput.addEventListener('blur', () => {
+    setTimeout(updateViewportMetrics, 120);
+  });
+
   document.addEventListener('pointerdown', event => {
     if (
       !emojiPicker.hidden &&
@@ -1205,12 +1203,9 @@
   });
 
   window.addEventListener('online', checkConnectionAfterResume);
-  window.visualViewport?.addEventListener('resize', () => {
-    if (chatView.hidden) return;
-    requestAnimationFrame(() => {
-      messages.scrollTop = messages.scrollHeight;
-    });
-  });
+  window.addEventListener('resize', updateViewportMetrics);
+  window.visualViewport?.addEventListener('resize', updateViewportMetrics);
+  window.visualViewport?.addEventListener('scroll', updateViewportMetrics);
 
   window.addEventListener('beforeunload', () => {
     stopScanner();
@@ -1224,13 +1219,13 @@
 
   if (!('RTCPeerConnection' in window)) {
     setStatus('Not supported here', 'error', 'Try this page in a current version of Chrome, Safari, or Firefox.');
-    connectStartButton.disabled = true;
     createOfferButton.disabled = true;
     scanQrButton.disabled = true;
     useCodeButton.disabled = true;
   } else {
     resetPeer();
-    showStart();
+    showRoleChoices();
   }
+  updateViewportMetrics();
   void restoreHistory();
 })();
