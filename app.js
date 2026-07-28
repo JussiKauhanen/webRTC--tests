@@ -64,6 +64,8 @@
   const emojiPicker = $('#emojiPicker');
   const historyNotice = $('#historyNotice');
   const clearHistoryButton = $('#clearHistory');
+  const landingQr = $('#landingQr');
+  const landingUrl = $('#landingUrl');
 
   let peer = null;
   let channel = null;
@@ -457,6 +459,42 @@
   function isConnectionCode(value) {
     const compact = String(value || '').trim().replace(/\s+/g, '');
     return compact.startsWith(CODE_PREFIX) || compact.startsWith(LEGACY_CODE_PREFIX);
+  }
+
+  function renderLandingQr() {
+    if (!landingQr || !window.qrcode) return;
+
+    try {
+      const pageUrl = window.location.href.split('#')[0];
+      const codeMatrix = window.qrcode(0, 'M');
+      codeMatrix.addData(pageUrl, 'Byte');
+      codeMatrix.make();
+      const modules = codeMatrix.getModuleCount();
+      const quietZone = 4;
+      const scale = 5;
+      const size = (modules + quietZone * 2) * scale;
+      const context = landingQr.getContext('2d');
+      landingQr.width = size;
+      landingQr.height = size;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, size, size);
+      context.fillStyle = '#173d3a';
+      for (let row = 0; row < modules; row++) {
+        for (let column = 0; column < modules; column++) {
+          if (!codeMatrix.isDark(row, column)) continue;
+          context.fillRect(
+            (column + quietZone) * scale,
+            (row + quietZone) * scale,
+            scale,
+            scale
+          );
+        }
+      }
+      landingUrl.textContent = `${window.location.host}${window.location.pathname}`;
+    } catch (error) {
+      console.error('Could not create the landing-page QR code.', error);
+      landingQr.closest('.launch-card')?.setAttribute('hidden', '');
+    }
   }
 
   async function renderQr(code, type) {
@@ -1217,6 +1255,7 @@
     objectUrls.forEach(url => URL.revokeObjectURL(url));
   });
 
+  renderLandingQr();
   if (!('RTCPeerConnection' in window)) {
     setStatus('Not supported here', 'error', 'Try this page in a current version of Chrome, Safari, or Firefox.');
     createOfferButton.disabled = true;

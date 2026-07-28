@@ -3,14 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#f4f8f7">
-  <title>water.io — Chat directly</title>
+  <meta name="theme-color" content="#f4f8f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#102220" media="(prefers-color-scheme: dark)">
+  <title>water.io direct — Send it straight to a friend</title>
   <meta name="description" content="A private browser-to-browser chat for messages and photos.">
   <link rel="icon" href="../assets/og-image.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="app-shell">
+  <div class="desktop-experience">
+    <aside class="desktop-promo" aria-label="About water.io direct">
+      <div class="desktop-brand">water<span>.io</span><small>direct</small></div>
+      <p class="desktop-eyebrow">Private browser-to-browser chat</p>
+      <h1>Send it straight<br>to a friend.</h1>
+      <p class="desktop-lede">
+        Share messages and photos directly between two phones. No account, no app,
+        and no message server in the middle.
+      </p>
+      <ul class="desktop-features" aria-label="Highlights">
+        <li>Peer to peer</li>
+        <li>Nothing to install</li>
+        <li>Local history</li>
+      </ul>
+      <div class="launch-card">
+        <canvas id="landingQr" aria-label="QR code to open water.io direct on a phone"></canvas>
+        <div>
+          <strong>Open on your phone</strong>
+          <span>Scan with your camera</span>
+          <small id="landingUrl"></small>
+        </div>
+      </div>
+      <p class="desktop-footnote">Static, private, and made for quick exchanges.</p>
+    </aside>
+
+    <section class="phone-stage" aria-label="Live water.io direct app">
+      <div class="phone-frame">
+        <div class="phone-island" aria-hidden="true"></div>
+        <main class="app-shell">
     <header class="masthead">
       <a class="brand" href="../" aria-label="Back to water.io">water<span>.io</span></a>
       <div class="status-pill" id="statusPill" data-state="idle" hidden>
@@ -112,7 +141,10 @@
         </form>
       </div>
     </section>
-  </main>
+        </main>
+      </div>
+    </section>
+  </div>
 
   <div class="pairing-modal" id="pairingModal" hidden role="dialog" aria-modal="true" aria-labelledby="qrTitle">
     <div class="pairing-sheet">
