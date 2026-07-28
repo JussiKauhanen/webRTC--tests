@@ -22,8 +22,10 @@
   const $ = selector => document.querySelector(selector);
   const setupView = $('#setupView');
   const startView = $('#startView');
+  const roleView = $('#roleView');
   const chatView = $('#chatView');
   const connectStartButton = $('#connectStart');
+  const backToStartButton = $('#backToStart');
   const statusPill = $('#statusPill');
   const statusText = $('#statusText');
   const chatStatus = $('#chatStatus');
@@ -32,6 +34,8 @@
   const localCode = $('#localCode');
   const remoteCode = $('#remoteCode');
   const copyCode = $('#copyCode');
+  const createOfferButton = $('#createOffer');
+  const scanQrButton = $('#scanQr');
   const useCodeButton = $('#useCode');
   const resetButton = $('#resetConnection');
   const qrPanel = $('#qrPanel');
@@ -94,6 +98,19 @@
   function showStart() {
     setupView.hidden = false;
     startView.hidden = false;
+    roleView.hidden = true;
+    chatView.hidden = true;
+    reconnectNotice.hidden = true;
+    emojiPicker.hidden = true;
+    hidePairing();
+    statusPill.hidden = true;
+    document.body.classList.remove('chat-active');
+  }
+
+  function showRoleChoices() {
+    setupView.hidden = false;
+    startView.hidden = true;
+    roleView.hidden = false;
     chatView.hidden = true;
     reconnectNotice.hidden = true;
     emojiPicker.hidden = true;
@@ -597,6 +614,7 @@
     saveConnectionOwner(true);
     if (!recovery) sessionWasConnected = false;
     connectStartButton.disabled = true;
+    createOfferButton.disabled = true;
     reconnectShowButton.disabled = true;
     useCodeButton.disabled = true;
     showPairing(true);
@@ -632,6 +650,7 @@
       }
     } finally {
       connectStartButton.disabled = false;
+      createOfferButton.disabled = false;
       reconnectShowButton.disabled = false;
       useCodeButton.disabled = false;
     }
@@ -994,7 +1013,13 @@
     scheduleRecovery('The phone was asleep or offline.');
   }
 
-  connectStartButton.addEventListener('click', () => createOffer());
+  connectStartButton.addEventListener('click', showRoleChoices);
+  backToStartButton.addEventListener('click', () => {
+    resetPeer();
+    showStart();
+  });
+  createOfferButton.addEventListener('click', () => createOffer());
+  scanQrButton.addEventListener('click', startScanner);
   scanReturnButton.addEventListener('click', startScanner);
   reconnectShowButton.addEventListener('click', () => createOffer({ recovery: true }));
   reconnectScanButton.addEventListener('click', startScanner);
@@ -1003,7 +1028,7 @@
     hidePairing();
     if (chatView.hidden) {
       resetPeer();
-      showStart();
+      showRoleChoices();
     } else if (!canSend()) {
       showReconnectChoices('Reconnect when you are ready');
     }
@@ -1109,6 +1134,8 @@
   if (!('RTCPeerConnection' in window)) {
     setStatus('Not supported here', 'error', 'Try this page in a current version of Chrome, Safari, or Firefox.');
     connectStartButton.disabled = true;
+    createOfferButton.disabled = true;
+    scanQrButton.disabled = true;
     useCodeButton.disabled = true;
   } else {
     resetPeer();

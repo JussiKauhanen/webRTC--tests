@@ -44,6 +44,34 @@
           <button id="clearHistory" type="button">Clear it</button>
         </div>
       </div>
+
+      <div class="role-view" id="roleView" hidden>
+        <button class="back-button" id="backToStart" type="button" aria-label="Go back">←</button>
+        <div class="role-copy">
+          <p class="eyebrow">Connect your phones</p>
+          <h1>Host or join?</h1>
+          <p>One phone hosts the chat. The other joins by scanning its code.</p>
+        </div>
+
+        <div class="role-options">
+          <button class="role-option" id="createOffer" type="button">
+            <span class="role-icon host-icon" aria-hidden="true">▦</span>
+            <span>
+              <strong>Host a chat</strong>
+              <small>Show a code for your friend</small>
+            </span>
+            <span class="role-arrow" aria-hidden="true">→</span>
+          </button>
+          <button class="role-option" id="scanQr" type="button">
+            <span class="role-icon join-icon" aria-hidden="true">⌗</span>
+            <span>
+              <strong>Join a chat</strong>
+              <small>Scan the host’s code</small>
+            </span>
+            <span class="role-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
     </section>
 
     <section class="chat-view" id="chatView" aria-labelledby="chatHeading" hidden>
