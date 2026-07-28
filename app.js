@@ -182,11 +182,33 @@
     }
   }
 
+  function setWakeStatus(state, detail = '') {
+    wakeStatus.dataset.state = state;
+    wakeStatus.hidden = state === 'off';
+    wakeStatus.disabled = ['active', 'requesting', 'unsupported'].includes(state);
+    wakeStatus.title = detail;
+    if (state === 'active') wakeStatus.textContent = 'Screen stays on';
+    else if (state === 'requesting') wakeStatus.textContent = 'Keeping screen on…';
+    else if (state === 'unsupported') wakeStatus.textContent = 'Wake lock unavailable';
+    else if (state === 'retry') wakeStatus.textContent = 'Screen may sleep · retry';
+  }
+
   async function requestWakeLock() {
     wakeLockWanted = true;
-    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
-    if (wakeLock && !wakeLock.released) return;
+    if (!('wakeLock' in navigator)) {
+      setWakeStatus('unsupported', 'This browser does not offer screen wake lock.');
+      return;
+    }
+    if (document.visibilityState !== 'visible') {
+      setWakeStatus('retry', 'Return to this page and tap to retry.');
+      return;
+    }
+    if (wakeLock && !wakeLock.released) {
+      setWakeStatus('active');
+      return;
+    }
 
+    setWakeStatus('requesting');
     try {
       const sentinel = await navigator.wakeLock.request('screen');
       if (!wakeLockWanted) {
@@ -194,14 +216,21 @@
         return;
       }
       wakeLock = sentinel;
-      wakeStatus.hidden = false;
+      setWakeStatus('active');
       sentinel.addEventListener('release', () => {
         if (wakeLock === sentinel) wakeLock = null;
-        wakeStatus.hidden = true;
+        if (wakeLockWanted) {
+          setWakeStatus('retry', 'Android may block wake lock while Battery Saver is active.');
+        } else {
+          setWakeStatus('off');
+        }
       });
-    } catch {
+    } catch (error) {
       wakeLock = null;
-      wakeStatus.hidden = true;
+      const reason = error?.name === 'NotAllowedError'
+        ? 'Battery Saver, browser settings, or an embedded browser blocked the wake lock.'
+        : 'The browser could not keep the screen on.';
+      setWakeStatus('retry', reason);
     }
   }
 
@@ -209,7 +238,7 @@
     wakeLockWanted = false;
     const currentLock = wakeLock;
     wakeLock = null;
-    wakeStatus.hidden = true;
+    setWakeStatus('off');
     try {
       await currentLock?.release();
     } catch {
@@ -1096,6 +1125,9 @@
   });
   useCodeButton.addEventListener('click', () => useRemoteDescription());
   copyCode.addEventListener('click', copyLocalCode);
+  wakeStatus.addEventListener('click', () => {
+    if (wakeStatus.dataset.state === 'retry') void requestWakeLock();
+  });
   resetButton.addEventListener('click', endConversation);
   clearHistoryButton.addEventListener('click', clearHistory);
   emojiToggle.addEventListener('click', () => {

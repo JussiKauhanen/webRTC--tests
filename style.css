@@ -461,7 +461,24 @@ summary:focus-visible {
 }
 
 .wake-status {
-  color: rgba(255, 255, 255, 0.62);
+  margin: 3px 0 0 8px;
+  padding: 0;
+  border: 0;
+  color: #ffd3bc;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.wake-status[data-state="active"] {
+  color: #9ce6d2;
+  cursor: default;
+}
+
+.wake-status[data-state="unsupported"] {
+  color: rgba(255, 255, 255, 0.5);
+  cursor: default;
 }
 
 .end-button {
